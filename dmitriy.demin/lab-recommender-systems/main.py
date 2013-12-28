@@ -13,14 +13,6 @@ class TrainData:
 		self.test_rates = [(int(user), int(item)) for user, item in \
 			(line.split() for line in lines[ntrainrates+1:ntrainrates+1+ntestrates])]
 
-# Returns standart deviation and mean of data set 
-def data_params(l, max_rate):
-	if len(l) == 0:
-		# print("Debug: No ratings")
-		return 0, max_rate / 2
-	mean = sum(l) / len(l)
-	return sqrt(sum((x - mean)**2 for x in l)), mean
-
 # Predicts rates using weighted average of neighbors' ratings
 def answer(tests, max_rating, train_rates, item_correlation):
 	# n = 0
@@ -41,33 +33,26 @@ def answer(tests, max_rating, train_rates, item_correlation):
 		else:
 			yield sum_rate / sum_weight
 
+def dot_product(a, b):
+	return sum(x * y for x, y in filter(lambda p: None not in p, zip(a, b)))
+
 class ItemCorrelation:
 	def __init__(self, train_data):
 		self.train_data = train_data
 		# list of pairs (rates' deviation, rates' mean)
-		self.item_params = [data_params(list(filter(None, item_data)), train_data.max_rating) for item_data in train_data.train_rates]
+		self.item_params = [sqrt(sum(x**2 for x in filter(None, item_data))) for item_data in train_data.train_rates]
 		# Estimates the simmilarity between items using Pearson's coefficient
 		self.item_correlation = [[None] * train_data.nitems for i in range(train_data.nitems)]
 
 		
 	def of(self, i, j):
 		if self.item_correlation[i][j] == None:
-			i_deviation, i_mean = self.item_params[i]
-			j_deviation, j_mean = self.item_params[j]
-
-			ij_cov = 0
-			for xi, xj in zip(self.train_data.train_rates[i], self.train_data.train_rates[j]):
-				if xi != None and xj != None:
-					ij_cov += (xi - i_mean) * (xj - j_mean)
-			# Hack
-			if i_deviation == 0:
-				ij_cov = sum(xj - j_mean for xj in filter(None, self.train_data.train_rates[j]))
-				i_deviation = 1
-			if j_deviation == 0:
-				ij_cov = sum(xi - i_mean for xi in filter(None, self.train_data.train_rates[i]))
-				j_deviation = 1
-
-			ij_cor = ij_cov / (i_deviation * j_deviation)
+			i_sqr_mean = self.item_params[i]
+			j_sqr_mean = self.item_params[j]
+			if i_sqr_mean == 0 or j_sqr_mean == 0:
+				ij_cor = 0
+			else:
+				ij_cor = dot_product(self.train_data.train_rates[i], self.train_data.train_rates[j]) / (i_sqr_mean * j_sqr_mean)
 			self.item_correlation[i][j] = ij_cor
 			self.item_correlation[j][i] = ij_cor
 		return self.item_correlation[i][j]
@@ -79,4 +64,5 @@ if __name__ == "__main__":
 
 	train_data = TrainData(open(sys.argv[1]).read())
 	item_correlation = ItemCorrelation(train_data)
-	print("\n".join(answer(train_data.test_rates, train_data.max_rating, train_data.train_rates, item_correlation)))
+	for rate in answer(train_data.test_rates, train_data.max_rating, train_data.train_rates, item_correlation):
+		print(str(rate))
